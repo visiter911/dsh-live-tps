@@ -36,7 +36,7 @@ dsh plugin --profile <your-profile> add "github:<owner>/dsh-live-tps"
 For the desktop profile:
 
 ```bash
-dsh plugin --profile desktop add "github:CHANGE-ME/dsh-live-tps"
+dsh plugin --profile desktop add "github:visiter911/dsh-live-tps"
 ```
 
 Restart DeepSeek Harness afterwards — the client JavaScript must be reloaded.

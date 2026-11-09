@@ -36,7 +36,7 @@ dsh plugin --profile <你的 profile> add "github:<owner>/dsh-live-tps"
 例如桌面版：
 
 ```bash
-dsh plugin --profile desktop add "github:CHANGE-ME/dsh-live-tps"
+dsh plugin --profile desktop add "github:visiter911/dsh-live-tps"
 ```
 
 装完**重启 DeepSeek Harness**（客户端 JS 需要重新加载）。

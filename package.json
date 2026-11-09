@@ -59,10 +59,10 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/CHANGE-ME/dsh-live-tps.git"
+    "url": "git+https://github.com/visiter911/dsh-live-tps.git"
   },
   "bugs": {
-    "url": "https://github.com/CHANGE-ME/dsh-live-tps/issues"
+    "url": "https://github.com/visiter911/dsh-live-tps/issues"
   },
-  "homepage": "https://github.com/CHANGE-ME/dsh-live-tps#readme"
+  "homepage": "https://github.com/visiter911/dsh-live-tps#readme"
 }
