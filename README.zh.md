@@ -93,8 +93,8 @@ dsh plugin --profile desktop add /path/to/dsh-live-tps
 
 ## 第三方代码
 
-`vendor/dsh-all-usage/` 是 [dsh-all-usage](https://github.com/ParticleLight/dsh-all-usage) 1.1.18 的主机端引擎，MIT 许可，含两处本地修改，详见 [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md)。
+`vendor/dsh-all-usage/` 是 [dsh-all-usage](https://github.com/ParticleLight/dsh-all-usage) 1.1.18 的主机端引擎（MIT），含三处本地修改：provider 归并、旧会话每周冻结、账本写入合并。[THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md) 记录了精确的上游 tag、commit、源码包 SHA-256、逐文件 blob 哈希，以及三处改动的具体位置。
 
 ## 许可
 
-MIT，见 [LICENSE](LICENSE)。
+MIT © 2026 visiter911，见 [LICENSE](LICENSE)。

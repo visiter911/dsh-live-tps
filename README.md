@@ -93,8 +93,8 @@ If an external `dsh-all-usage` is installed and enabled, this plugin steps aside
 
 ## Third-party code
 
-`vendor/dsh-all-usage/` is the host engine of [dsh-all-usage](https://github.com/ParticleLight/dsh-all-usage) 1.1.18 (MIT) with two local modifications. See [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
+`vendor/dsh-all-usage/` is the host engine of [dsh-all-usage](https://github.com/ParticleLight/dsh-all-usage) 1.1.18 (MIT) with three local modifications — provider grouping, weekly session freeze, and ledger write coalescing. [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md) records the exact upstream tag, commit, source archive SHA-256, per-file blob hashes, and the three changes line by line.
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT © 2026 visiter911 — see [LICENSE](LICENSE).
