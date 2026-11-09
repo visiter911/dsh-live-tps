@@ -1091,6 +1091,7 @@ window.__ModuleLoader__.load({
 			const outputTotal = stats?.global?.outputTotal ?? 0;
 			const running = stats?.global?.running ?? 0;
 			const status = offline ? 'idle' : overallStatus(sessions);
+			// 服务端已按「停止即归零」计算，这里不再按年龄二次衰减，避免两处口径打架。
 			const visible = sessions.filter((row) => row.status !== 'idle' || (row.lastChunkAgeMs ?? 1e9) < 15000).slice(0, 5);
 			const todayTotals = today?.totals ?? null;
 

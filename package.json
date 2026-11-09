@@ -1,6 +1,6 @@
 {
   "name": "dsh-live-tps",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "type": "module",
   "description": "DeepSeek Harness sidebar plugin: live tok/s with per-session detail, plus a full usage dashboard (today/7d/30d/all, cost, tokens, cache hit rate, per-model, per-workspace, DeepSeek search billing).",
   "license": "MIT",

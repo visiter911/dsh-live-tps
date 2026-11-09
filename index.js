@@ -89,6 +89,11 @@ function usagePackageCandidates() {
 	return candidates.filter((file) => existsSync(file));
 }
 const WINDOW_MS = 5000;
+// 观察窗下限：观测跨度不足 1 秒时不报速度。流式输出常有突发（缓冲一次 flush
+// 好几个 chunk），用不到 1 秒的跨度去除会算出几百上千 tok/s 的假峰值。
+const MIN_SPAN_MS = 1000;
+// 生成中但超过这么久没有新 token，视为卡住（网络停顿等），速度归零。
+const STALL_MS = 2000;
 const IDLE_TTL_MS = 180000;
 const CHARS_PER_TOKEN = 4;
 const CJK_TOKENS_PER_CHAR = 1;
@@ -112,6 +117,7 @@ function makeSession(id) {
 		provider: null,
 		untaggedTokens: 0, // 模型未知时流入的估算 token，模型确定后回填聚合表
 		peakTps: 0, // 本会话生命周期内的滚动窗口速度峰值
+		streamEndedAt: null, // 上一次"停止生成"的时刻（流结束/工具调用/回合结束）
 	};
 }
 
@@ -356,12 +362,27 @@ class LiveTps {
 
 	addTokens(session, tokens, at) {
 		if (!(tokens > 0)) return;
+		// 事件/帧的时间戳可能缺失（frame.time 在部分宿主上为 undefined）。
+		// 没有时间戳的样本会让窗口永远滑不出去、跨度塌到下限，算出上千 tok/s 的假值。
+		const stamp = Number.isFinite(at) ? at : Date.now();
 		session.turnOutput += tokens;
 		session.sessionOutput += tokens;
-		session.samples.push({ t: at, tokens });
-		session.lastChunkAt = at;
+		// 停表后又出字：上一段输出的样本不能带进新一段，否则窗口里新旧 token
+		// 一起除以很短的新跨度，会算出几千 tok/s 的假尖峰。
+		if (session.streamEndedAt !== null) {
+			const resumedAt = session.streamEndedAt;
+			session.samples = session.samples.filter((sample) => sample.t > resumedAt);
+			session.streamEndedAt = null;
+		}
+		session.samples.push({ t: stamp, tokens });
+		session.lastChunkAt = stamp;
 		if (session.model !== null) this.addModelTokens(session.model, session.provider, tokens);
 		else session.untaggedTokens += tokens;
+	}
+
+	/** 标记生成已停止（流结束 / 工具调用 / 重试 / 回合结束），速度立即归零。 */
+	markStreamEnded(session, at) {
+		session.streamEndedAt = Number.isFinite(at) ? at : Date.now();
 	}
 
 	onEvent(session, event) {
@@ -397,6 +418,8 @@ class LiveTps {
 				const source = event.data?.message?.source;
 				const stepModel = typeof source?.model === 'string' && source.model !== '' ? source.model : session.model;
 				const stepProvider = typeof source?.provider === 'string' && source.provider !== '' ? source.provider : session.provider;
+				// 一步结束＝本轮输出到此为止，立即停表（后面还要等工具/下一轮）。
+				this.markStreamEnded(session, event.time);
 				// 模型已知：把流式期间攒下的未归属 token 回填进聚合表。
 				if (stepModel !== null && session.untaggedTokens > 0) {
 					this.addModelTokens(stepModel, stepProvider, session.untaggedTokens);
@@ -438,22 +461,26 @@ class LiveTps {
 			}
 			case 'tool/call':
 				session.status = 'tool';
+				this.markStreamEnded(session, event.time);
 				break;
 			case 'tool/result':
 				if (session.status === 'tool') session.status = 'running';
 				break;
 			case 'llm/retry':
 				session.status = 'retrying';
+				this.markStreamEnded(session, event.time);
 				break;
 			case 'llm/retry-started':
 				if (session.status === 'retrying') session.status = 'running';
 				break;
 			case 'step/end':
 				session.stepEstimate = 0;
+				this.markStreamEnded(session, event.time);
 				break;
 			case 'turn/end':
 				session.status = 'idle';
 				session.turnStartedAt = null;
+				this.markStreamEnded(session, event.time);
 				break;
 		}
 	}
@@ -509,8 +536,12 @@ class LiveTps {
 						session.status = 'streaming';
 					}
 				}
+			} else if (frame.type === 'end') {
+				// 流结束（committed / abandoned）：这一轮流式生成到此为止，立即停表。
+				// 之前只靠 turn/step 事件，模型停止输出后速度还会在窗口里挂 5 秒。
+				session.lastEventAt = Date.now();
+				this.markStreamEnded(session, Number.isFinite(frame.time) ? frame.time : Date.now());
 			}
-			// 'end' 帧（committed/abandoned）：状态交由 turn/step/session 落账事件驱动。
 		} catch (error) {
 			this.ctx.logger.warn(error instanceof Error ? error : new Error(String(error)));
 		}
@@ -520,9 +551,24 @@ class LiveTps {
 		const cutoff = now - WINDOW_MS;
 		while (session.samples.length > 0 && session.samples[0].t < cutoff) session.samples.shift();
 		if (session.samples.length === 0) return 0;
+		// 停止生成后立即归零：否则样本要在窗口里留 5 秒，界面看着像卡住。
+		if (session.streamEndedAt !== null) return 0;
+		let lastSampleAt = 0;
+		for (const sample of session.samples) if (sample.t > lastSampleAt) lastSampleAt = sample.t;
+		// 生成中但长时间没有新 token（网络停顿等），同样归零，避免误以为还在跑。
+		if (now - lastSampleAt > STALL_MS) return 0;
+		let first = now;
 		let sum = 0;
-		for (const sample of session.samples) sum += sample.tokens;
-		return (sum / WINDOW_MS) * 1000;
+		for (const sample of session.samples) {
+			if (sample.t < first) first = sample.t;
+			sum += sample.tokens;
+		}
+		if (!(sum > 0)) return 0;
+		const span = now - first;
+		// 只有一个样本、或观测跨度还太短时不报速度（就当"预热中"）。
+		// 否则一个 300 token 的突发 chunk 除以 300ms 下限会得到 1000 tok/s 的假值。
+		if (session.samples.length < 2 || span < MIN_SPAN_MS) return 0;
+		return (sum / Math.min(WINDOW_MS, span)) * 1000;
 	}
 
 	prune(now) {
@@ -727,4 +773,4 @@ export function apply(ctx) {
 	new LiveTps(ctx).start();
 }
 
-export { SearchMeter };
+export { SearchMeter, LiveTps };
