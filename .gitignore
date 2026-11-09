@@ -1,0 +1,14 @@
+# build / publish artifacts
+node_modules/
+*.tgz
+*.log
+
+# local tooling — not part of the published package
+tools/
+
+# editor / OS noise
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini

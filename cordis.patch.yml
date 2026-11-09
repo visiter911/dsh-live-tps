@@ -1,0 +1,17 @@
+# dsh-live-tps — bundle patch
+#
+# Inserted through the profile's dsh.profile.bundles. This patch mounts one Host
+# row; the Client half is discovered from the `dsh.client` marker in package.json
+# and rendered into the sidebar footer.
+#
+# The usage engine (aggregation, ledger, pricing, session sync) is vendored under
+# vendor/dsh-all-usage and served by this plugin at /api/all-usage/*, so the
+# standalone dsh-all-usage package is not required. When an external dsh-all-usage
+# is installed and enabled, this plugin steps aside and lets it own the routes.
+#
+# Live speed statistics are memory-only; usage and search billing persist under
+# $DSH_HOME (default ~/.dsh).
+- insert:
+    - id: live-tps
+      name: dsh-live-tps
+      inject: [webServer]

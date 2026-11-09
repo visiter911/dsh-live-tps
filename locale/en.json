@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Live speed and usage",
+    "description": "Live output speed, peak and today's summary in the sidebar footer, with a per-session popover; Usage opens the full dashboard: cost, cache hit rate, token metrics, output trend, per-model/provider/workspace breakdown, recent calls and search API billing."
+  }
+}

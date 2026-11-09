@@ -1,0 +1,68 @@
+{
+  "name": "dsh-live-tps",
+  "version": "0.2.0",
+  "type": "module",
+  "description": "DeepSeek Harness sidebar plugin: live tok/s with per-session detail, plus a full usage dashboard (today/7d/30d/all, cost, tokens, cache hit rate, per-model, per-workspace, DeepSeek search billing).",
+  "license": "MIT",
+  "author": "cheny",
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "dsh-bundle",
+    "deepseek-harness",
+    "tokens",
+    "tps",
+    "throughput",
+    "usage",
+    "cost",
+    "sidebar"
+  ],
+  "engines": {
+    "dsh": ">=0.2.0-rc.1 <0.3.0-0",
+    "node": ">=22"
+  },
+  "main": "index.js",
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "index.js",
+    "client.js",
+    "cordis.patch.yml",
+    "locale/*.json",
+    "icon.svg",
+    "vendor/**",
+    "README.md",
+    "README.zh.md",
+    "LICENSE",
+    "THIRD-PARTY-NOTICES.md",
+    "CHANGELOG.md"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-sidebar"
+      ]
+    }
+  },
+  "scripts": {
+    "check": "node --check index.js && node --check client.js",
+    "pack:list": "npm pack --dry-run"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/CHANGE-ME/dsh-live-tps.git"
+  },
+  "bugs": {
+    "url": "https://github.com/CHANGE-ME/dsh-live-tps/issues"
+  },
+  "homepage": "https://github.com/CHANGE-ME/dsh-live-tps#readme"
+}
