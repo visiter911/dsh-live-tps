@@ -335,7 +335,7 @@ class LiveTps {
 		this.sessions = new Map();
 		this.models = new Map(); // model -> { model, provider, outputTokens, peakTps } 进程级聚合
 		this.evictedOutput = 0; // 被清理会话的累计输出，并入全局总量
-		this.globalPeakTps = 0; // 本次宿主启动以来的最高会话速度
+		this.globalPeakTps = 0; // 本次宿主启动以来「各会话速度之和」的峰值
 		this.liveFramesSeen = false; // 见到 agent/assistant-stream 帧后停用旧 chunk 通道防双计
 		this.searchMeter = new SearchMeter(ctx);
 		// 诊断计数：区分"没有数据"与"有数据但算成 0"。
@@ -613,11 +613,14 @@ class LiveTps {
 		}
 	}
 
-	/** 滚动窗口速度的峰值记账：会话级 + 进程级，同时保留按模型的峰值。 */
+	/**
+	 * 滚动窗口速度的峰值记账：会话级与按模型的峰值都取该会话自身的速度。
+	 * 进程级峰值（footer 的 max）由 snapshot() 用「各会话之和」单独记录，
+	 * 否则它只会等于最快的单个会话，多会话并行时会明显偏低。
+	 */
 	recordPeak(session, tps) {
 		if (!(tps > 0)) return;
 		if (tps > session.peakTps) session.peakTps = round1(tps);
-		if (session.peakTps > this.globalPeakTps) this.globalPeakTps = session.peakTps;
 		if (session.model !== null) {
 			const entry = this.addModelTokens(session.model, session.provider, 0);
 			if (tps > entry.peakTps) entry.peakTps = round1(tps);
@@ -652,6 +655,8 @@ class LiveTps {
 			});
 		}
 		rows.sort((a, b) => b.tps - a.tps || b.lastEventAgeMs - a.lastEventAgeMs);
+		// 进程级峰值 = 各会话实时速度之和的峰值（多会话并行时才正确）。
+		if (globalTps > this.globalPeakTps) this.globalPeakTps = round1(globalTps);
 		const models = [...this.models.values()]
 			.map((entry) => ({
 				model: entry.model,

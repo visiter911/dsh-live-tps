@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.2.3
+
+The footer peak now records the sum of all sessions, not the fastest single session.
+
+- `globalPeakTps` is updated in `snapshot()` from the summed live rate. It used to be raised
+  inside `recordPeak()` from each session's own peak, so it could never exceed the fastest
+  single session — with several sessions streaming at once the "max" read far too low.
+- Per-session peak and per-model peak keep their original meaning (the session's own peak).
+- Exposed the aggregate rule in `global.peakTps`; a unit case now asserts
+  `global.peakTps > fastestSessionPeak × 1.5` when two sessions stream at the same rate.
+
 ## 0.2.2
 
 Fix the opposite problem introduced in 0.2.1: the readout could sit at 0 while tokens were
