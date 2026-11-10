@@ -89,11 +89,17 @@ function usagePackageCandidates() {
 	return candidates.filter((file) => existsSync(file));
 }
 const WINDOW_MS = 5000;
-// 观察窗下限：观测跨度不足 1 秒时不报速度。流式输出常有突发（缓冲一次 flush
-// 好几个 chunk），用不到 1 秒的跨度去除会算出几百上千 tok/s 的假峰值。
-const MIN_SPAN_MS = 1000;
+// 计算分母的下限：分母不用"从第一个样本到现在"，否则一次突发 flush（多个
+// chunk 同时到）会被几十毫秒去除，算出上千 tok/s；而分母又必须随窗口滑动，
+// 否则持续输出时会永远偏低。折中：分母取 [2s, 5s] 之间。
+const MIN_DIVISOR_MS = 2000;
+// 报出来的上限：真到这个量级的模型不存在，超出说明遇到突发 flush，
+// 钳位比直接归零更有用（至少还显示"很快"而不是"卡住"）。
+const MAX_REPORTED_TPS = 700;
 // 生成中但超过这么久没有新 token，视为卡住（网络停顿等），速度归零。
-const STALL_MS = 2000;
+const STALL_MS = 2500;
+// 攒够样本之前，最多沿用上一次读数这么久（避免两次采样之间闪回 0）。
+const HOLD_MS = 1500;
 const IDLE_TTL_MS = 180000;
 const CHARS_PER_TOKEN = 4;
 const CJK_TOKENS_PER_CHAR = 1;
@@ -118,6 +124,8 @@ function makeSession(id) {
 		untaggedTokens: 0, // 模型未知时流入的估算 token，模型确定后回填聚合表
 		peakTps: 0, // 本会话生命周期内的滚动窗口速度峰值
 		streamEndedAt: null, // 上一次"停止生成"的时刻（流结束/工具调用/回合结束）
+		lastRate: 0, // 最近一次算出的非零速度，用于短暂停顿期间保持读数
+		lastRateAt: 0, // 上一次算出有效速度的时刻
 	};
 }
 
@@ -330,6 +338,10 @@ class LiveTps {
 		this.globalPeakTps = 0; // 本次宿主启动以来的最高会话速度
 		this.liveFramesSeen = false; // 见到 agent/assistant-stream 帧后停用旧 chunk 通道防双计
 		this.searchMeter = new SearchMeter(ctx);
+		// 诊断计数：区分"没有数据"与"有数据但算成 0"。
+		this.frameCount = 0;
+		this.deltaCount = 0;
+		this.tokenCount = 0;
 	}
 
 	estimate(text) {
@@ -518,6 +530,7 @@ class LiveTps {
 			this.sessions.set(id, session);
 		}
 		try {
+			this.frameCount += 1;
 			if (frame.type === 'start') {
 				session.lastEventAt = Date.now();
 				session.stepEstimate = 0;
@@ -529,10 +542,12 @@ class LiveTps {
 					let text = '';
 					if (chunk.type === 'text-delta' || chunk.type === 'reasoning-delta') text = chunk.text ?? '';
 					else if (chunk.type === 'tool-call-delta') text = chunk.argumentsDelta ?? '';
+					if (text !== '') this.deltaCount += 1;
 					const tokens = this.estimate(text);
 					if (tokens > 0) {
+						this.tokenCount += tokens;
 						session.stepEstimate += tokens;
-						this.addTokens(session, tokens, frame.time);
+						this.addTokens(session, tokens, Number.isFinite(frame.time) ? frame.time : Date.now());
 						session.status = 'streaming';
 					}
 				}
@@ -555,20 +570,34 @@ class LiveTps {
 		if (session.streamEndedAt !== null) return 0;
 		let lastSampleAt = 0;
 		for (const sample of session.samples) if (sample.t > lastSampleAt) lastSampleAt = sample.t;
-		// 生成中但长时间没有新 token（网络停顿等），同样归零，避免误以为还在跑。
-		if (now - lastSampleAt > STALL_MS) return 0;
-		let first = now;
-		let sum = 0;
-		for (const sample of session.samples) {
-			if (sample.t < first) first = sample.t;
-			sum += sample.tokens;
+		const silent = now - lastSampleAt;
+		// 长时间没新 token（网络停顿、切工具）归零，避免误以为还在跑。
+		if (silent > STALL_MS) return 0;
+		const rate = this.computeRate(session, now);
+		if (rate > 0) {
+			session.lastRate = rate;
+			session.lastRateAt = now;
+			return rate;
 		}
+		// 冷启动/刚恢复的第一个几百毫秒还没攒够跨度：如果刚刚才报过速度，
+		// 就把上一次读数沿用下来（最多 HOLD_MS），避免界面在两次采样之间闪回 0。
+		if (session.lastRate > 0 && silent <= STALL_MS && now - session.lastRateAt <= HOLD_MS) return session.lastRate;
+		return 0;
+	}
+
+	/**
+	 * 纯窗口计算。分母固定夹在 [MIN_DIVISOR_MS, WINDOW_MS]：
+	 * - 用"从第一个样本到现在"会因突发 flush（几十毫秒内到几十个 chunk）算出上千；
+	 * - 固定 2 秒又会让刚恢复的第一个样本直接除出合理值，不再闪 0。
+	 */
+	computeRate(session, now) {
+		let sum = 0;
+		for (const sample of session.samples) sum += sample.tokens;
 		if (!(sum > 0)) return 0;
-		const span = now - first;
-		// 只有一个样本、或观测跨度还太短时不报速度（就当"预热中"）。
-		// 否则一个 300 token 的突发 chunk 除以 300ms 下限会得到 1000 tok/s 的假值。
-		if (session.samples.length < 2 || span < MIN_SPAN_MS) return 0;
-		return (sum / Math.min(WINDOW_MS, span)) * 1000;
+		const span = now - session.samples[0].t;
+		const divisor = Math.min(WINDOW_MS, Math.max(MIN_DIVISOR_MS, span));
+		const rate = (sum / divisor) * 1000;
+		return rate > MAX_REPORTED_TPS ? MAX_REPORTED_TPS : rate;
 	}
 
 	prune(now) {
@@ -635,6 +664,10 @@ class LiveTps {
 		return {
 			serverTime: now,
 			windowMs: WINDOW_MS,
+			minDivisorMs: MIN_DIVISOR_MS,
+			stallMs: STALL_MS,
+			holdMs: HOLD_MS,
+			diag: { frames: this.frameCount, deltas: this.deltaCount, tokens: Math.round(this.tokenCount) },
 			global: {
 				tps: round1(globalTps),
 				peakTps: round1(this.globalPeakTps),

@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.2.2
+
+Fix the opposite problem introduced in 0.2.1: the readout could sit at 0 while tokens were
+still arriving.
+
+- Compute the rate over a divisor clamped to `[2 s, 5 s]` instead of `now - firstSample`.
+  Using the real span made a buffered flush (dozens of chunks arriving within tens of
+  milliseconds) read as several thousand tok/s; using a span threshold then made the very next
+  sample read as 0. The clamped divisor is stable in both directions.
+- Remove the sample-count/span warmup gate that caused the 0; a single burst now reports a
+  plausible rate instead of nothing.
+- `STALL_MS` 2000 → 2500 and a `HOLD_MS` (1.5 s) carry-over so the value does not flash 0
+  between two samples of the same stream.
+- Expose `minDivisorMs`, `stallMs`, `holdMs`, and a `diag` block (frames / deltas / tokens) on
+  `/live-tps/v1/stats` so this class of bug is observable instead of guessed at.
+
 ## 0.2.1
 
 Live speed now stops the instant generation ends, instead of coasting for the rest of the
