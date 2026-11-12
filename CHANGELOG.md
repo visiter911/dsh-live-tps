@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.2.4
+
+The trend chart now plots total processed tokens instead of output tokens.
+
+- Added `bucketTotal()` = input + cacheRead + output, matching the "share by total" metric.
+- The dashboard trend (rolling 24 h for today, daily otherwise) and the popover's daily bars
+  both use it, so a day full of cache reads no longer looks tiny next to a day of fresh output.
+- Chart tooltip now labels the value with "total processed"; the chart title changed from
+  "Output trend" to "Total processed trend" (en/zh).
+- Cost and call tooltips are unchanged.
+
 ## 0.2.3
 
 The footer peak now records the sum of all sessions, not the fastest single session.

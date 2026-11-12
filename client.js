@@ -61,7 +61,7 @@ window.__ModuleLoader__.load({
 				callsLabel: '调用',
 				sessionsLabel: '会话',
 				modelsLabel: '模型',
-				trendLabel: '输出趋势',
+				trendLabel: '总处理趋势',
 				byModel: '模型',
 				byProvider: '供应商',
 				workspaceLabel: '工作区',
@@ -128,7 +128,7 @@ window.__ModuleLoader__.load({
 				callsLabel: 'Calls',
 				sessionsLabel: 'Sessions',
 				modelsLabel: 'Models',
-				trendLabel: 'Output trend',
+				trendLabel: 'Total processed trend',
 				byModel: 'Models',
 				byProvider: 'Providers',
 				workspaceLabel: 'Workspaces',
@@ -458,6 +458,15 @@ window.__ModuleLoader__.load({
 			return merged.length > 24 ? merged.slice(-24) : merged;
 		}
 
+		/** 总处理 = 输入 + 缓存读 + 输出（趋势图与「总处理份额」口径一致）。 */
+		function bucketTotal(bucket) {
+			const tokens = bucket?.tokens ?? {};
+			const input = Number(tokens.input) || 0;
+			const cacheRead = Number(tokens.cacheRead) || 0;
+			const output = Number(tokens.output) || 0;
+			return input + cacheRead + output;
+		}
+
 		function buildChart(data, range) {
 			if (range === 'today') {
 				const hourly = Array.isArray(data?.rollingHourly) && data.rollingHourly.length > 0
@@ -471,7 +480,7 @@ window.__ModuleLoader__.load({
 							key: String(bucket.time),
 							short: hour,
 							label: `${date.getMonth() + 1}/${date.getDate()} ${hour}:00`,
-							value: bucket.tokens?.output ?? bucket.output ?? 0,
+							value: bucketTotal(bucket),
 							cost: bucket.cost?.total,
 							calls: bucket.calls ?? 0,
 						};
@@ -485,7 +494,7 @@ window.__ModuleLoader__.load({
 					key: day.date,
 					short: day.date.slice(5).replace('-', '/'),
 					label: day.date,
-					value: day.tokens?.output ?? day.output ?? 0,
+					value: bucketTotal(day),
 					cost: day.cost?.total,
 					calls: day.calls ?? 0,
 				})),
@@ -816,7 +825,7 @@ window.__ModuleLoader__.load({
 						return h('div', {
 							className: 'lu-col' + (index === chart.rows.length - 1 ? ' now' : ''),
 							key: row.key,
-							title: `${row.label} · ${fmtTokens(row.value)} ${L.shortOut} · ${fmtMoney(row.cost)} · ${fmtInt(row.calls)} ${L.callsLabel}`,
+							title: `${row.label} · ${fmtTokens(row.value)} ${L.shortTotal} · ${fmtMoney(row.cost)} · ${fmtInt(row.calls)} ${L.callsLabel}`,
 						}, h('div', { className: 'lu-bar', style: { height: `${pct}%` } }));
 					});
 
@@ -1147,7 +1156,7 @@ window.__ModuleLoader__.load({
 				.sort((a, b) => Number(b.cost?.total ?? 0) - Number(a.cost?.total ?? 0) || b.output - a.output)
 				.slice(0, 6);
 			const daily = (usage?.daily ?? []).slice(-30);
-			const barMax = daily.reduce((max, day) => Math.max(max, day.tokens?.output ?? 0), 0);
+			const barMax = daily.reduce((max, day) => Math.max(max, bucketTotal(day)), 0);
 
 			const metric = (label, value) => h('div', { className: 'lt-metric', key: label },
 				h('span', null, label),
@@ -1172,8 +1181,8 @@ window.__ModuleLoader__.load({
 							? h('div', { className: 'lt-bars' }, daily.map((day) => h('div', {
 								className: 'lt-bar',
 								key: day.date,
-								title: `${day.date} · ${fmtTokens(day.tokens?.output ?? 0)} tok · ${fmtMoney(day.cost?.total)}`,
-								style: { height: `${Math.max(6, Math.round(((day.tokens?.output ?? 0) / (barMax || 1)) * 100))}%` },
+								title: `${day.date} · ${fmtTokens(bucketTotal(day))} ${L.shortTotal} · ${fmtMoney(day.cost?.total)}`,
+								style: { height: `${Math.max(6, Math.round((bucketTotal(day) / (barMax || 1)) * 100))}%` },
 							})))
 							: null,
 						perModel.length === 0
